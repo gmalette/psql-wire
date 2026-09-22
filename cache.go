@@ -162,6 +162,9 @@ func (p *Portal) execute(ctx context.Context, limit Limit, reader *buffer.Reader
 				client:  writer,
 				yield:   yield,
 				tag:     &p.tag,
+				// A first unlimited Execute drains the handler in this call;
+				// no later Execute can impose a limit on remaining rows.
+				batchable: limit == NoLimit,
 			}
 			err := p.statement.fn(ctx, dw, p.parameters)
 			if err != nil && !errors.Is(err, ErrSuspendedHandlerClosed) {

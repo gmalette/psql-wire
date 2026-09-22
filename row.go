@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jeroenrinzema/psql-wire/pkg/buffer"
 	"github.com/jeroenrinzema/psql-wire/pkg/types"
 )
@@ -71,8 +72,15 @@ func (columns Columns) CopyIn(ctx context.Context, writer *buffer.Writer, format
 // Binary. If you provide a single format code, it will be applied to all
 // columns.
 func (columns Columns) Write(ctx context.Context, formats []FormatCode, writer *buffer.Writer, srcs []any) (err error) {
+	return columns.write(ctx, formats, writer, srcs, TypeMap(ctx), nil)
+}
+
+func (columns Columns) write(ctx context.Context, formats []FormatCode, writer *buffer.Writer, srcs []any, tm *pgtype.Map, scratch *[]byte) (err error) {
 	if len(srcs) != len(columns) {
 		return fmt.Errorf("unexpected columns, %d columns are defined inside the given table but %d were given", len(columns), len(srcs))
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	writer.Start(types.ServerDataRow)
@@ -88,7 +96,7 @@ func (columns Columns) Write(ctx context.Context, formats []FormatCode, writer *
 			format = formats[index]
 		}
 
-		err = column.Write(ctx, writer, format, srcs[index])
+		err = column.write(writer, format, srcs[index], tm, scratch)
 		if err != nil {
 			return err
 		}
@@ -150,13 +158,18 @@ func (column Column) Write(ctx context.Context, writer *buffer.Writer, format Fo
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+	return column.write(writer, format, src, TypeMap(ctx), nil)
+}
 
-	tm := TypeMap(ctx)
+func (column Column) write(writer *buffer.Writer, format FormatCode, src any, tm *pgtype.Map, scratch *[]byte) (err error) {
 	if tm == nil {
 		return errors.New("postgres connection info has not been defined inside the given context")
 	}
 
 	bb := make([]byte, 0)
+	if scratch != nil && *scratch != nil {
+		bb = (*scratch)[:0]
+	}
 	bb, err = tm.Encode(uint32(column.Oid), int16(format), src, bb)
 	if err != nil {
 		return err
@@ -172,6 +185,16 @@ func (column Column) Write(ctx context.Context, writer *buffer.Writer, format Fo
 
 	writer.AddInt32(length)
 	writer.AddBytes(bb)
+
+	// AddBytes copies the value into the frame before scratch is reused. A
+	// NULL must not discard a previously allocated buffer.
+	if scratch != nil && bb != nil {
+		if cap(bb) <= maxEncodeScratchCapacity {
+			*scratch = bb[:0]
+		} else {
+			*scratch = nil
+		}
+	}
 
 	return nil
 }

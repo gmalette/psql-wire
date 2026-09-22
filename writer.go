@@ -43,12 +43,34 @@ type DataWriter interface {
 	CopyIn(format FormatCode) (*CopyReader, error)
 }
 
+// RowWriter is an optional DataWriter extension. Rows must be observably
+// identical to calling Row once per row, in order.
+type RowWriter interface {
+	Rows(rows [][]any) error
+}
+
+// WriteRows writes rows in order, using batching when supported by w.
+func WriteRows(w DataWriter, rows [][]any) error {
+	if bw, ok := w.(RowWriter); ok {
+		return bw.Rows(rows)
+	}
+	for _, row := range rows {
+		if err := w.Row(row); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ErrDataWritten is returned when an empty result is attempted to be sent to the
 // client while data has already been written.
 var ErrDataWritten = errors.New("data has already been written")
 
 // ErrClosedWriter is returned when the data writer has been closed.
 var ErrClosedWriter = errors.New("closed writer")
+
+// Bound per-writer scratch so a single large value is not retained.
+const maxEncodeScratchCapacity = 64 << 10
 
 // dataWriter implements DataWriter for use inside an iter.Seq push
 // iterator. Row encodes the row to the wire and then yields to the pull
@@ -67,6 +89,10 @@ type dataWriter struct {
 	tag     *string
 	closed  bool
 	written uint32
+	// Only the first unlimited Execute can enable batching. Limited portals
+	// must continue yielding per row, including after subsequent Executes.
+	batchable     bool
+	encodeScratch []byte
 }
 
 func (writer *dataWriter) Columns() Columns {
@@ -78,7 +104,7 @@ func (writer *dataWriter) Row(values []any) error {
 		return ErrClosedWriter
 	}
 
-	err := writer.columns.Write(writer.ctx, writer.formats, writer.client, values)
+	err := writer.columns.write(writer.ctx, writer.formats, writer.client, values, TypeMap(writer.ctx), &writer.encodeScratch)
 	if err != nil {
 		return err
 	}
@@ -89,6 +115,46 @@ func (writer *dataWriter) Row(values []any) error {
 	// calls next again, and returns false when stop is called.
 	if !writer.yield(struct{}{}) {
 		return ErrSuspendedHandlerClosed
+	}
+	return nil
+}
+
+// Rows writes materialized rows, batching frames only when portal flow control
+// permits it. Limited portals keep Row's per-row suspension checkpoints.
+func (writer *dataWriter) Rows(rows [][]any) (err error) {
+	if writer.closed {
+		return ErrClosedWriter
+	}
+	if !writer.batchable {
+		for _, row := range rows {
+			if err := writer.Row(row); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	writer.client.StartBatch(32 << 10)
+	defer func() {
+		pending := writer.client.Buffered() > 0
+		flushErr := writer.client.EndBatch()
+		if err == nil {
+			err = flushErr
+		}
+		if pending && flushErr == nil && !writer.yield(struct{}{}) && err == nil {
+			err = ErrSuspendedHandlerClosed
+		}
+	}()
+
+	tm := TypeMap(writer.ctx)
+	for _, row := range rows {
+		if err := writer.columns.write(writer.ctx, writer.formats, writer.client, row, tm, &writer.encodeScratch); err != nil {
+			return err
+		}
+		writer.written++
+		if writer.client.Buffered() == 0 && !writer.yield(struct{}{}) {
+			return ErrSuspendedHandlerClosed
+		}
 	}
 	return nil
 }
@@ -134,6 +200,7 @@ func (writer *dataWriter) Complete(description string) error {
 
 func (writer *dataWriter) close() {
 	writer.closed = true
+	writer.encodeScratch = nil
 }
 
 // commandComplete announces that the requested command has successfully been executed.
