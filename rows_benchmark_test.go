@@ -40,14 +40,32 @@ func benchmarkRows() (Columns, [][]any) {
 // loopback case), not packets. Input construction and connection setup are
 // outside the timed region; writer buffers are warm, as on a reused connection.
 func BenchmarkDataWriterRows(b *testing.B) {
-	benchmarkDataWriterRows(b, true)
+	benchmarkDataWriterRows(b, true, func() *pgtype.Map {
+		return (&Server{}).newTypeMap()
+	})
 }
 
 func BenchmarkDataWriterRowLoop(b *testing.B) {
-	benchmarkDataWriterRows(b, false)
+	benchmarkDataWriterRows(b, false, func() *pgtype.Map {
+		return (&Server{}).newTypeMap()
+	})
 }
 
-func benchmarkDataWriterRows(b *testing.B, batch bool) {
+func BenchmarkDataWriterRowsCodecs(b *testing.B) {
+	for _, implementation := range []struct {
+		name       string
+		newTypeMap func() *pgtype.Map
+	}{
+		{name: "pgx", newTypeMap: pgtype.NewMap},
+		{name: "psql-wire", newTypeMap: func() *pgtype.Map { return (&Server{}).newTypeMap() }},
+	} {
+		b.Run(implementation.name, func(b *testing.B) {
+			benchmarkDataWriterRows(b, true, implementation.newTypeMap)
+		})
+	}
+}
+
+func benchmarkDataWriterRows(b *testing.B, batch bool, newTypeMap func() *pgtype.Map) {
 	for _, sink := range []string{"discard", "loopback"} {
 		b.Run(sink, func(b *testing.B) {
 			output := io.Discard
@@ -79,7 +97,7 @@ func benchmarkDataWriterRows(b *testing.B, batch bool) {
 				output = conn
 			}
 			columns, rows := benchmarkRows()
-			ctx := setTypeInfo(context.Background(), pgtype.NewMap())
+			ctx := setTypeInfo(context.Background(), newTypeMap())
 			// Model a request context with twenty layers above connection state.
 			type depthKey int
 			for i := range 20 {
