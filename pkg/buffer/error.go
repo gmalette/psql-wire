@@ -52,11 +52,11 @@ func (err MessageSizeExceeded) Is(target error) bool {
 
 // NewMessageSizeExceeded constructs a new error message wrapping the
 // ErrMaxMessageSizeExceeded type with additional metadata.
-func NewMessageSizeExceeded(max, size int) error {
+func NewMessageSizeExceeded(limit, size int) error {
 	err := MessageSizeExceeded{
-		Message: fmt.Sprintf("message size %d, bigger than maximum allowed message size %d", size, max),
+		Message: fmt.Sprintf("message size %d, bigger than maximum allowed message size %d", size, limit),
 		Size:    size,
-		Max:     max,
+		Max:     limit,
 	}
 
 	return psqlerr.WithSeverity(psqlerr.WithCode(err, codes.ProgramLimitExceeded), psqlerr.LevelError)
@@ -66,5 +66,6 @@ func NewMessageSizeExceeded(max, size int) error {
 // MessageSizeExceeded. A boolean is returned indicating whether the error
 // contained a MessageSizeExceeded message.
 func UnwrapMessageSizeExceeded(err error) (result MessageSizeExceeded, _ bool) {
-	return result, errors.As(err, &result)
+	found := errors.As(err, &result)
+	return result, found
 }

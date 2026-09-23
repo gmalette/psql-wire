@@ -102,15 +102,14 @@ func (srv *Session) consumeCommands(ctx context.Context, conn net.Conn, reader *
 	// the session is always idle here. We still go through readyForQuery so a
 	// configured TxStatus callback gets a consistent signal that
 	// ReadyForQuery is about to be sent.
-	err := srv.readyForQuery(ctx, writer)
-	if err != nil {
+	if err := srv.readyForQuery(ctx, writer); err != nil {
 		return err
 	}
 
 	defer srv.Close()
 
 	for {
-		if err = srv.consumeSingleCommand(ctx, reader, writer, conn); err != nil {
+		if err := srv.consumeSingleCommand(ctx, reader, writer, conn); err != nil {
 			return err
 		}
 	}
@@ -669,7 +668,7 @@ func (srv *Session) readParameters(ctx context.Context, reader *buffer.Reader) (
 		srv.logger.Debug("incoming parameter", slog.String("value", string(value)))
 
 		format := defaultFormat
-		if len(formats) > int(i) {
+		if len(formats) > i {
 			format = formats[i]
 		}
 

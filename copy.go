@@ -89,7 +89,7 @@ type Scanner func(value []byte) (any, error)
 // as an any. The scanner uses the given map to decode the value and the given
 // type to determine the format of the data that is scanned.
 func NewScanner(tm *pgtype.Map, column Column, format FormatCode) (Scanner, error) {
-	typed, has := tm.TypeForOID(uint32(column.Oid))
+	typed, has := tm.TypeForOID(column.Oid)
 	if !has {
 		return nil, fmt.Errorf("unknown column type: %d", column.Oid)
 	}
@@ -104,14 +104,14 @@ func NewScanner(tm *pgtype.Map, column Column, format FormatCode) (Scanner, erro
 // columns are used to determine the format of the data that is read from the
 // reader. If the end of the copy-in stream is reached, an io.EOF error is
 // returned.
-func NewBinaryColumnReader(ctx context.Context, copy *CopyReader) (_ *BinaryCopyReader, err error) {
+func NewBinaryColumnReader(ctx context.Context, copyReader *CopyReader) (_ *BinaryCopyReader, err error) {
 	tm := TypeMap(ctx)
 	if tm == nil {
 		return nil, errors.New("postgres connection info has not been defined inside the given context")
 	}
 
-	scanners := make([]Scanner, len(copy.columns))
-	for index, column := range copy.columns {
+	scanners := make([]Scanner, len(copyReader.columns))
+	for index, column := range copyReader.columns {
 		scanners[index], err = NewScanner(tm, column, BinaryFormat)
 		if err != nil {
 			return nil, err
@@ -120,7 +120,7 @@ func NewBinaryColumnReader(ctx context.Context, copy *CopyReader) (_ *BinaryCopy
 
 	return &BinaryCopyReader{
 		typeMap:  tm,
-		reader:   copy,
+		reader:   copyReader,
 		scanners: scanners,
 	}, nil
 }
@@ -205,14 +205,14 @@ type TextCopyReader struct {
 	nullValue  string // PostgreSQL NULL value string (default empty)
 }
 
-func NewTextColumnReader(ctx context.Context, copy *CopyReader, csvReader *csv.Reader, csvReaderBuffer *bytes.Buffer, nullValue string) (_ *TextCopyReader, err error) {
+func NewTextColumnReader(ctx context.Context, copyReader *CopyReader, csvReader *csv.Reader, csvReaderBuffer *bytes.Buffer, nullValue string) (_ *TextCopyReader, err error) {
 	tm := TypeMap(ctx)
 	if tm == nil {
 		return nil, errors.New("postgres connection info has not been defined inside the given context")
 	}
 
-	scanners := make([]Scanner, len(copy.columns))
-	for index, column := range copy.columns {
+	scanners := make([]Scanner, len(copyReader.columns))
+	for index, column := range copyReader.columns {
 		scanners[index], err = NewScanner(tm, column, TextFormat)
 		if err != nil {
 			return nil, err
@@ -221,7 +221,7 @@ func NewTextColumnReader(ctx context.Context, copy *CopyReader, csvReader *csv.R
 
 	reader := &TextCopyReader{
 		typeMap:    tm,
-		reader:     copy,
+		reader:     copyReader,
 		scanners:   scanners,
 		csvReader:  csvReader,
 		buffer:     csvReaderBuffer,

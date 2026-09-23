@@ -166,7 +166,7 @@ func (srv *Server) readClientParameters(ctx context.Context, reader *buffer.Read
 		}
 
 		// an empty key indicates the end of the connection parameters
-		if len(key) == 0 {
+		if key == "" {
 			break
 		}
 

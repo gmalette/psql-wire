@@ -170,7 +170,7 @@ func (client *Client) Error(t *testing.T, msgRegex string) {
 
 	ct, _, err := client.ReadTypedMsg()
 	require.NoError(t, err)
-	require.Equal(t, types.ServerErrorResponse, types.ServerMessage(ct))
+	require.Equal(t, types.ServerErrorResponse, ct)
 
 	// ErrorResponse body is a sequence of (1-byte field type, null-terminated
 	// string) records, terminated by a zero byte.

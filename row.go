@@ -170,7 +170,7 @@ func (column Column) write(writer *buffer.Writer, format FormatCode, src any, tm
 	if scratch != nil && *scratch != nil {
 		bb = (*scratch)[:0]
 	}
-	bb, err = tm.Encode(uint32(column.Oid), int16(format), src, bb)
+	bb, err = tm.Encode(column.Oid, int16(format), src, bb)
 	if err != nil {
 		return err
 	}

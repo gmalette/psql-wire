@@ -39,7 +39,7 @@ func TestErrorCode(t *testing.T) {
 		conn, err := sql.Open("postgres", connstr)
 		assert.NoError(t, err)
 
-		_, err = conn.Query("SELECT *;")
+		_, err = conn.Exec("SELECT *;")
 		assert.Error(t, err)
 
 		err = conn.Close()

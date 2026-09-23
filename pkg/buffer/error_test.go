@@ -6,10 +6,10 @@ import (
 )
 
 func TestErrMessageSizeExceeded(t *testing.T) {
-	max := DefaultBufferSize
-	size := max + 1024
+	limit := DefaultBufferSize
+	size := limit + 1024
 
-	err := NewMessageSizeExceeded(max, size)
+	err := NewMessageSizeExceeded(limit, size)
 
 	if !errors.Is(err, ErrMessageSizeExceeded) {
 		t.Error("unexpected comparison, error should contain message size exceeded type")
@@ -20,8 +20,8 @@ func TestErrMessageSizeExceeded(t *testing.T) {
 		t.Fatal("unexpected result, expected message size exceeded to be wrapped")
 	}
 
-	if exceeded.Max != max {
-		t.Errorf("unexpected max size %d, expected %d", exceeded.Max, max)
+	if exceeded.Max != limit {
+		t.Errorf("unexpected max size %d, expected %d", exceeded.Max, limit)
 	}
 
 	if exceeded.Size != size {
