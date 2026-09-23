@@ -169,9 +169,9 @@ func TestRowsFlushChunksAndYield(t *testing.T) {
 	for i, packet := range out.packets {
 		frames := rowFrames(t, packet)
 		// Flush at the first complete frame reaching the threshold.
-		require.Less(t, len(packet)-len(frames[len(frames)-1]), 32<<10)
+		require.Less(t, len(packet)-len(frames[len(frames)-1]), 128<<10)
 		if i < len(out.packets)-1 {
-			require.GreaterOrEqual(t, len(packet), 32<<10)
+			require.GreaterOrEqual(t, len(packet), 128<<10)
 		}
 	}
 }

@@ -134,7 +134,7 @@ func (writer *dataWriter) Rows(rows [][]any) (err error) {
 		return nil
 	}
 
-	writer.client.StartBatch(32 << 10)
+	writer.client.StartBatch(128 << 10)
 	defer func() {
 		pending := writer.client.Buffered() > 0
 		flushErr := writer.client.EndBatch()
