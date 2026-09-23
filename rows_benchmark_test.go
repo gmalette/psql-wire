@@ -40,14 +40,16 @@ func benchmarkRows() (Columns, [][]any) {
 // loopback case), not packets. Input construction and connection setup are
 // outside the timed region; writer buffers are warm, as on a reused connection.
 func BenchmarkDataWriterRows(b *testing.B) {
-	benchmarkDataWriterRows(b, true)
+	columns, rows := benchmarkRows()
+	benchmarkDataWriterRowsWith(b, true, columns, rows, pgtype.NewMap())
 }
 
 func BenchmarkDataWriterRowLoop(b *testing.B) {
-	benchmarkDataWriterRows(b, false)
+	columns, rows := benchmarkRows()
+	benchmarkDataWriterRowsWith(b, false, columns, rows, pgtype.NewMap())
 }
 
-func benchmarkDataWriterRows(b *testing.B, batch bool) {
+func benchmarkDataWriterRowsWith(b *testing.B, batch bool, columns Columns, rows [][]any, typeMap *pgtype.Map) {
 	for _, sink := range []string{"discard", "loopback"} {
 		b.Run(sink, func(b *testing.B) {
 			output := io.Discard
@@ -78,8 +80,7 @@ func benchmarkDataWriterRows(b *testing.B, batch bool) {
 				}()
 				output = conn
 			}
-			columns, rows := benchmarkRows()
-			ctx := setTypeInfo(context.Background(), pgtype.NewMap())
+			ctx := setTypeInfo(context.Background(), typeMap)
 			// Model a request context with twenty layers above connection state.
 			type depthKey int
 			for i := range 20 {
