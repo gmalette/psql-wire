@@ -221,6 +221,7 @@ func (srv *Server) Serve(listener net.Listener) error {
 // newTypeMap creates a fresh pgtype.Map with any configured type extensions applied.
 func (srv *Server) newTypeMap() *pgtype.Map {
 	m := pgtype.NewMap()
+	registerTimestampCodec(m)
 	if srv.typeExtension != nil {
 		srv.typeExtension(m)
 	}
