@@ -115,6 +115,33 @@ func TestRowsMatchRowAndColumnsWrite(t *testing.T) {
 	}
 }
 
+func TestRowsAggregatesEncodeObservationsByColumn(t *testing.T) {
+	type observation struct {
+		format       FormatCode
+		oid          uint32
+		count        uint64
+		encodedBytes uint64
+	}
+
+	writer := newRowsWriter(
+		Columns{{Oid: pgtype.TextOID}, {Oid: pgtype.Int4OID}},
+		[]FormatCode{TextFormat, BinaryFormat},
+		io.Discard,
+	)
+	var observations []observation
+	writer.encodeObserver = func(_ context.Context, format FormatCode, oid uint32, count uint64, encodedBytes uint64) {
+		observations = append(observations, observation{
+			format: format, oid: oid, count: count, encodedBytes: encodedBytes,
+		})
+	}
+
+	require.NoError(t, writer.Rows([][]any{{"alice", int32(30)}, {"bob", nil}}))
+	require.Equal(t, []observation{
+		{format: TextFormat, oid: pgtype.TextOID, count: 2, encodedBytes: 8},
+		{format: BinaryFormat, oid: pgtype.Int4OID, count: 1, encodedBytes: 4},
+	}, observations)
+}
+
 type rowErrorText struct{ err error }
 
 func (value rowErrorText) TextValue() (pgtype.Text, error) { return pgtype.Text{}, value.err }

@@ -91,8 +91,9 @@ type dataWriter struct {
 	written uint32
 	// Only the first unlimited Execute can enable batching. Limited portals
 	// must continue yielding per row, including after subsequent Executes.
-	batchable     bool
-	encodeScratch []byte
+	batchable      bool
+	encodeScratch  []byte
+	encodeObserver EncodeObserver
 }
 
 func (writer *dataWriter) Columns() Columns {
@@ -104,7 +105,7 @@ func (writer *dataWriter) Row(values []any) error {
 		return ErrClosedWriter
 	}
 
-	err := writer.columns.write(writer.ctx, writer.formats, writer.client, values, TypeMap(writer.ctx), &writer.encodeScratch)
+	err := writer.columns.write(writer.ctx, writer.formats, writer.client, values, TypeMap(writer.ctx), &writer.encodeScratch, writer.encodeObserver, nil)
 	if err != nil {
 		return err
 	}
@@ -147,8 +148,13 @@ func (writer *dataWriter) Rows(rows [][]any) (err error) {
 	}()
 
 	tm := TypeMap(writer.ctx)
+	var stats []encodeStats
+	if writer.encodeObserver != nil {
+		stats = make([]encodeStats, len(writer.columns))
+		defer writer.observeEncodedRows(stats)
+	}
 	for _, row := range rows {
-		if err := writer.columns.write(writer.ctx, writer.formats, writer.client, row, tm, &writer.encodeScratch); err != nil {
+		if err := writer.columns.write(writer.ctx, writer.formats, writer.client, row, tm, &writer.encodeScratch, nil, stats); err != nil {
 			return err
 		}
 		writer.written++
@@ -157,6 +163,22 @@ func (writer *dataWriter) Rows(rows [][]any) (err error) {
 		}
 	}
 	return nil
+}
+
+func (writer *dataWriter) observeEncodedRows(stats []encodeStats) {
+	for index, stat := range stats {
+		if stat.count == 0 {
+			continue
+		}
+		format := TextFormat
+		if len(writer.formats) > 0 {
+			format = writer.formats[0]
+			if len(writer.formats) > index {
+				format = writer.formats[index]
+			}
+		}
+		writer.encodeObserver(writer.ctx, format, writer.columns[index].Oid, stat.count, stat.encodedBytes)
+	}
 }
 
 func (writer *dataWriter) CopyIn(format FormatCode) (*CopyReader, error) {

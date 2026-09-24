@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -40,14 +41,18 @@ func benchmarkRows() (Columns, [][]any) {
 // loopback case), not packets. Input construction and connection setup are
 // outside the timed region; writer buffers are warm, as on a reused connection.
 func BenchmarkDataWriterRows(b *testing.B) {
-	benchmarkDataWriterRows(b, true)
+	benchmarkDataWriterRows(b, true, false)
+}
+
+func BenchmarkDataWriterRowsObserved(b *testing.B) {
+	benchmarkDataWriterRows(b, true, true)
 }
 
 func BenchmarkDataWriterRowLoop(b *testing.B) {
-	benchmarkDataWriterRows(b, false)
+	benchmarkDataWriterRows(b, false, false)
 }
 
-func benchmarkDataWriterRows(b *testing.B, batch bool) {
+func benchmarkDataWriterRows(b *testing.B, batch bool, observe bool) {
 	for _, sink := range []string{"discard", "loopback"} {
 		b.Run(sink, func(b *testing.B) {
 			output := io.Discard
@@ -86,11 +91,19 @@ func benchmarkDataWriterRows(b *testing.B, batch bool) {
 				ctx = context.WithValue(ctx, depthKey(i), i)
 			}
 			counted := &countingRowSink{Writer: output}
+			var observedValues atomic.Uint64
+			var observedBytes atomic.Uint64
 			writer := &dataWriter{
 				ctx: ctx, columns: columns, formats: []FormatCode{TextFormat},
 				client:    buffer.NewWriter(slog.New(slog.NewTextHandler(io.Discard, nil)), counted),
 				yield:     func(struct{}) bool { return true },
 				batchable: true,
+			}
+			if observe {
+				writer.encodeObserver = func(_ context.Context, _ FormatCode, _ uint32, count uint64, encodedBytes uint64) {
+					observedValues.Add(count)
+					observedBytes.Add(encodedBytes)
+				}
 			}
 			write := func() {
 				if batch {
@@ -107,12 +120,20 @@ func benchmarkDataWriterRows(b *testing.B, batch bool) {
 			}
 			write()
 			counted.writes, counted.bytes = 0, 0
+			observedValues.Store(0)
+			observedBytes.Store(0)
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				write()
 			}
 			b.StopTimer()
+			if observe {
+				want := uint64(len(rows) * len(columns) * b.N)
+				if observedValues.Load() != want {
+					b.Fatalf("observed %d values, want %d", observedValues.Load(), want)
+				}
+			}
 			b.ReportMetric(float64(counted.writes)/float64(b.N), "writes/op")
 			b.ReportMetric(float64(counted.bytes)/float64(b.N), "wire-B/op")
 		})

@@ -177,6 +177,20 @@ type CancelRequestFn func(ctx context.Context, processID int32, secretKey int32)
 // PostgreSQL server.
 type OptionFn func(*Server) error
 
+// EncodeObserver observes successfully encoded non-NULL column values. Calls
+// may aggregate multiple values from the same result column and format. Count
+// is the number of encoded values represented by the call, and encodedBytes is
+// their combined encoded size.
+type EncodeObserver func(ctx context.Context, format FormatCode, oid uint32, count uint64, encodedBytes uint64)
+
+// WithEncodeObserver installs an [EncodeObserver] on the server.
+func WithEncodeObserver(observer EncodeObserver) OptionFn {
+	return func(srv *Server) error {
+		srv.encodeObserver = observer
+		return nil
+	}
+}
+
 // Statements sets the statement cache used to cache statements for later use. By
 // default [DefaultStatementCache] is used.
 func Statements(handler func() StatementCache) OptionFn {

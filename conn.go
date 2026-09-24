@@ -14,6 +14,7 @@ const (
 	ctxClientMetadata
 	ctxServerMetadata
 	ctxRemoteAddr
+	ctxEncodeObserver
 )
 
 // setTypeInfo constructs a new Postgres type connection info for the given value
@@ -45,6 +46,18 @@ func RemoteAddress(ctx context.Context) net.Addr {
 	}
 
 	return val.(net.Addr)
+}
+
+func setEncodeObserver(ctx context.Context, observer EncodeObserver) context.Context {
+	if observer == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, ctxEncodeObserver, observer)
+}
+
+func encodeObserverFromContext(ctx context.Context) EncodeObserver {
+	observer, _ := ctx.Value(ctxEncodeObserver).(EncodeObserver)
+	return observer
 }
 
 // Parameters represents a parameters collection of parameter status keys and

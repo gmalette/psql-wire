@@ -154,14 +154,15 @@ func (p *Portal) execute(ctx context.Context, limit Limit, reader *buffer.Reader
 		// statement.fn.
 		seq := func(yield func(struct{}) bool) {
 			dw := &dataWriter{
-				ctx:     ctx,
-				session: session,
-				columns: p.statement.columns,
-				formats: p.formats,
-				reader:  reader,
-				client:  writer,
-				yield:   yield,
-				tag:     &p.tag,
+				ctx:            ctx,
+				session:        session,
+				columns:        p.statement.columns,
+				formats:        p.formats,
+				reader:         reader,
+				client:         writer,
+				yield:          yield,
+				tag:            &p.tag,
+				encodeObserver: encodeObserverFromContext(ctx),
 				// A first unlimited Execute drains the handler in this call;
 				// no later Execute can impose a limit on remaining rows.
 				batchable: limit == NoLimit,

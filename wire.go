@@ -147,6 +147,7 @@ type Server struct {
 	Version          string
 	ShutdownTimeout  time.Duration
 	typeExtension    func(*pgtype.Map)
+	encodeObserver   EncodeObserver
 	closer           chan struct{}
 }
 
@@ -233,6 +234,7 @@ func (srv *Server) serve(ctx context.Context, conn net.Conn) error {
 	// when multiple goroutines access the same map concurrently during query execution
 	ctx = setTypeInfo(ctx, srv.newTypeMap())
 	ctx = setRemoteAddress(ctx, conn.RemoteAddr())
+	ctx = setEncodeObserver(ctx, srv.encodeObserver)
 	defer conn.Close() //nolint:errcheck
 
 	srv.logger.Debug("serving a new client connection")
